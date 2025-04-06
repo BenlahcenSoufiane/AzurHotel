@@ -23,6 +23,7 @@ export const registerUserSchema = z.object({
   fullName: z.string().min(2),
   email: z.string().email(),
   phone: z.string().optional(),
+  role: z.enum(["user", "admin"]).optional().default("user"),
 });
 
 // Schema for user login

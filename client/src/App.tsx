@@ -10,6 +10,7 @@ import SpaBookingPage from "./pages/spa-booking-page";
 import RestaurantBookingPage from "./pages/restaurant-booking-page";
 import AuthPage from "./pages/auth-page";
 import NotFound from "@/pages/not-found";
+import AdminDashboard from "./pages/admin/dashboard";
 import { AuthProvider } from "./hooks/use-auth";
 import { ProtectedRoute } from "./lib/protected-route";
 
@@ -21,6 +22,7 @@ function Router() {
       <ProtectedRoute path="/hotel-booking" component={HotelBookingPage} />
       <ProtectedRoute path="/spa-booking" component={SpaBookingPage} />
       <ProtectedRoute path="/restaurant-booking" component={RestaurantBookingPage} />
+      <ProtectedRoute path="/admin/dashboard" component={AdminDashboard} />
       <Route component={NotFound} />
     </Switch>
   );
