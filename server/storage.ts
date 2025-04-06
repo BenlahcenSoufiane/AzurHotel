@@ -7,6 +7,8 @@ import {
   restaurantMenus, RestaurantMenu, InsertRestaurantMenu,
   restaurantBookings, RestaurantBooking, InsertRestaurantBooking
 } from "@shared/schema";
+import { db } from "./db";
+import { eq, and, or, between, sql } from "drizzle-orm";
 
 // Interface for storage operations
 export interface IStorage {
@@ -49,45 +51,214 @@ export interface IStorage {
   checkRestaurantAvailability(date: Date, time: string, partySize: number, mealPeriod: string): Promise<boolean>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private roomTypes: Map<number, RoomType>;
-  private roomBookings: Map<number, RoomBooking>;
-  private spaServices: Map<number, SpaService>;
-  private spaBookings: Map<number, SpaBooking>;
-  private restaurantMenus: Map<number, RestaurantMenu>;
-  private restaurantBookings: Map<number, RestaurantBooking>;
-
-  private userId: number;
-  private roomTypeId: number;
-  private roomBookingId: number;
-  private spaServiceId: number;
-  private spaBookingId: number;
-  private restaurantMenuId: number;
-  private restaurantBookingId: number;
-
-  constructor() {
-    this.users = new Map();
-    this.roomTypes = new Map();
-    this.roomBookings = new Map();
-    this.spaServices = new Map();
-    this.spaBookings = new Map();
-    this.restaurantMenus = new Map();
-    this.restaurantBookings = new Map();
-
-    this.userId = 1;
-    this.roomTypeId = 1;
-    this.roomBookingId = 1;
-    this.spaServiceId = 1;
-    this.spaBookingId = 1;
-    this.restaurantMenuId = 1;
-    this.restaurantBookingId = 1;
-
-    // Add initial data
-    this.initializeData();
+export class DatabaseStorage implements IStorage {
+  // User operations
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
   }
 
-  private initializeData() {
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
+  }
+
+  async createUser(user: InsertUser): Promise<User> {
+    const [createdUser] = await db.insert(users).values(user).returning();
+    return createdUser;
+  }
+
+  // Room Types operations
+  async getRoomTypes(): Promise<RoomType[]> {
+    return await db.select().from(roomTypes);
+  }
+
+  async getRoomTypeById(id: number): Promise<RoomType | undefined> {
+    const [roomType] = await db.select().from(roomTypes).where(eq(roomTypes.id, id));
+    return roomType || undefined;
+  }
+
+  async createRoomType(roomType: InsertRoomType): Promise<RoomType> {
+    const [createdRoomType] = await db.insert(roomTypes).values(roomType).returning();
+    return createdRoomType;
+  }
+
+  // Room Bookings operations
+  async getRoomBookings(): Promise<RoomBooking[]> {
+    return await db.select().from(roomBookings);
+  }
+
+  async getRoomBookingById(id: number): Promise<RoomBooking | undefined> {
+    const [booking] = await db.select().from(roomBookings).where(eq(roomBookings.id, id));
+    return booking || undefined;
+  }
+
+  async createRoomBooking(booking: InsertRoomBooking): Promise<RoomBooking> {
+    // Convert ISO strings to Date objects for the database
+    const bookingWithDates = {
+      ...booking,
+      checkInDate: new Date(booking.checkInDate),
+      checkOutDate: new Date(booking.checkOutDate),
+      status: "confirmed" as const
+    };
+    
+    const [createdBooking] = await db.insert(roomBookings).values(bookingWithDates).returning();
+    return createdBooking;
+  }
+
+  async checkRoomAvailability(roomTypeId: number, checkInDate: Date, checkOutDate: Date): Promise<boolean> {
+    // Get the room type to verify it exists
+    const roomType = await this.getRoomTypeById(roomTypeId);
+    if (!roomType) return false;
+
+    // Find overlapping bookings for this room type
+    const overlappingBookings = await db.select().from(roomBookings)
+      .where(
+        and(
+          eq(roomBookings.roomTypeId, roomTypeId),
+          or(
+            // New booking starts during an existing booking
+            and(
+              sql`${roomBookings.checkInDate} <= ${checkInDate}`,
+              sql`${roomBookings.checkOutDate} > ${checkInDate}`
+            ),
+            // New booking ends during an existing booking
+            and(
+              sql`${roomBookings.checkInDate} < ${checkOutDate}`,
+              sql`${roomBookings.checkOutDate} >= ${checkOutDate}`
+            ),
+            // New booking contains an existing booking
+            and(
+              sql`${roomBookings.checkInDate} >= ${checkInDate}`,
+              sql`${roomBookings.checkOutDate} <= ${checkOutDate}`
+            )
+          )
+        )
+      );
+
+    // Assume we have 3 rooms of each type
+    return overlappingBookings.length < 3;
+  }
+
+  // Spa Services operations
+  async getSpaServices(): Promise<SpaService[]> {
+    return await db.select().from(spaServices);
+  }
+
+  async getSpaServiceById(id: number): Promise<SpaService | undefined> {
+    const [service] = await db.select().from(spaServices).where(eq(spaServices.id, id));
+    return service || undefined;
+  }
+
+  async createSpaService(service: InsertSpaService): Promise<SpaService> {
+    const [createdService] = await db.insert(spaServices).values(service).returning();
+    return createdService;
+  }
+
+  // Spa Bookings operations
+  async getSpaBookings(): Promise<SpaBooking[]> {
+    return await db.select().from(spaBookings);
+  }
+
+  async getSpaBookingById(id: number): Promise<SpaBooking | undefined> {
+    const [booking] = await db.select().from(spaBookings).where(eq(spaBookings.id, id));
+    return booking || undefined;
+  }
+
+  async createSpaBooking(booking: InsertSpaBooking): Promise<SpaBooking> {
+    // Convert ISO string to Date object for the database
+    const bookingWithDate = {
+      ...booking,
+      date: new Date(booking.date),
+      status: "confirmed" as const
+    };
+    
+    const [createdBooking] = await db.insert(spaBookings).values(bookingWithDate).returning();
+    return createdBooking;
+  }
+
+  async checkSpaAvailability(serviceId: number, date: Date, time: string): Promise<boolean> {
+    // Get the service to verify it exists
+    const service = await this.getSpaServiceById(serviceId);
+    if (!service) return false;
+
+    // Find bookings for this service at the same date and time
+    const sameTimeBookings = await db.select().from(spaBookings)
+      .where(
+        and(
+          eq(spaBookings.serviceId, serviceId),
+          sql`DATE(${spaBookings.date}) = DATE(${date})`,
+          eq(spaBookings.time, time)
+        )
+      );
+
+    // Assume we can handle 3 concurrent sessions for each service
+    return sameTimeBookings.length < 3;
+  }
+
+  // Restaurant Menu operations
+  async getRestaurantMenus(): Promise<RestaurantMenu[]> {
+    return await db.select().from(restaurantMenus);
+  }
+
+  async getRestaurantMenuById(id: number): Promise<RestaurantMenu | undefined> {
+    const [menu] = await db.select().from(restaurantMenus).where(eq(restaurantMenus.id, id));
+    return menu || undefined;
+  }
+
+  async createRestaurantMenu(menu: InsertRestaurantMenu): Promise<RestaurantMenu> {
+    const [createdMenu] = await db.insert(restaurantMenus).values(menu).returning();
+    return createdMenu;
+  }
+
+  // Restaurant Bookings operations
+  async getRestaurantBookings(): Promise<RestaurantBooking[]> {
+    return await db.select().from(restaurantBookings);
+  }
+
+  async getRestaurantBookingById(id: number): Promise<RestaurantBooking | undefined> {
+    const [booking] = await db.select().from(restaurantBookings).where(eq(restaurantBookings.id, id));
+    return booking || undefined;
+  }
+
+  async createRestaurantBooking(booking: InsertRestaurantBooking): Promise<RestaurantBooking> {
+    // Convert ISO string to Date object for the database
+    const bookingWithDate = {
+      ...booking,
+      date: new Date(booking.date),
+      status: "confirmed" as const
+    };
+    
+    const [createdBooking] = await db.insert(restaurantBookings).values(bookingWithDate).returning();
+    return createdBooking;
+  }
+
+  async checkRestaurantAvailability(date: Date, time: string, partySize: number, mealPeriod: string): Promise<boolean> {
+    // Find bookings for the same date, time, and meal period
+    const sameTimeBookings = await db.select().from(restaurantBookings)
+      .where(
+        and(
+          sql`DATE(${restaurantBookings.date}) = DATE(${date})`,
+          eq(restaurantBookings.time, time),
+          eq(restaurantBookings.mealPeriod, mealPeriod)
+        )
+      );
+
+    // Calculate total seats taken in this time slot
+    const totalSeats = sameTimeBookings.reduce((sum, booking) => sum + booking.partySize, 0);
+
+    // Assume the restaurant can seat 50 people at once
+    return totalSeats + partySize <= 50;
+  }
+
+  // Initialize the database with sample data
+  async initializeData() {
+    // Check if data already exists
+    const existingRoomTypes = await this.getRoomTypes();
+    if (existingRoomTypes.length > 0) {
+      return; // Data already initialized
+    }
+
     // Initialize room types
     const deluxeRoom: InsertRoomType = {
       name: "Deluxe Room",
@@ -98,7 +269,7 @@ export class MemStorage implements IStorage {
       amenities: ["Wi-Fi", "TV", "24-hour service"],
       imageUrl: "https://images.unsplash.com/photo-1618773928121-c32242e63f39?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
     };
-    this.createRoomType(deluxeRoom);
+    await this.createRoomType(deluxeRoom);
 
     const executiveSuite: InsertRoomType = {
       name: "Executive Suite",
@@ -109,7 +280,7 @@ export class MemStorage implements IStorage {
       amenities: ["Wi-Fi", "TV", "24-hour service", "Mini Bar"],
       imageUrl: "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
     };
-    this.createRoomType(executiveSuite);
+    await this.createRoomType(executiveSuite);
 
     const oceanViewSuite: InsertRoomType = {
       name: "Ocean View Suite",
@@ -120,7 +291,7 @@ export class MemStorage implements IStorage {
       amenities: ["Wi-Fi", "TV", "24-hour service", "Mini Bar", "Balcony"],
       imageUrl: "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
     };
-    this.createRoomType(oceanViewSuite);
+    await this.createRoomType(oceanViewSuite);
 
     // Initialize spa services
     const swedishMassage: InsertSpaService = {
@@ -130,7 +301,7 @@ export class MemStorage implements IStorage {
       price: 120,
       imageUrl: "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
     };
-    this.createSpaService(swedishMassage);
+    await this.createSpaService(swedishMassage);
 
     const luxuryFacial: InsertSpaService = {
       name: "Luxury Facial",
@@ -139,7 +310,7 @@ export class MemStorage implements IStorage {
       price: 150,
       imageUrl: "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
     };
-    this.createSpaService(luxuryFacial);
+    await this.createSpaService(luxuryFacial);
 
     const hotStoneMassage: InsertSpaService = {
       name: "Hot Stone Therapy",
@@ -148,7 +319,7 @@ export class MemStorage implements IStorage {
       price: 180,
       imageUrl: "https://images.unsplash.com/photo-1519823551278-64ac92734fb1?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
     };
-    this.createSpaService(hotStoneMassage);
+    await this.createSpaService(hotStoneMassage);
 
     // Initialize restaurant menus
     const signatureMenu: InsertRestaurantMenu = {
@@ -157,7 +328,7 @@ export class MemStorage implements IStorage {
       price: 120,
       imageUrl: "https://images.unsplash.com/photo-1600891964092-4316c288032e?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
     };
-    this.createRestaurantMenu(signatureMenu);
+    await this.createRestaurantMenu(signatureMenu);
 
     const seafoodCollection: InsertRestaurantMenu = {
       name: "Seafood Collection",
@@ -165,7 +336,7 @@ export class MemStorage implements IStorage {
       price: 95,
       imageUrl: "https://images.unsplash.com/photo-1543353071-873f17a7a088?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
     };
-    this.createRestaurantMenu(seafoodCollection);
+    await this.createRestaurantMenu(seafoodCollection);
 
     const vegetarianJourney: InsertRestaurantMenu = {
       name: "Vegetarian Journey",
@@ -173,182 +344,18 @@ export class MemStorage implements IStorage {
       price: 85,
       imageUrl: "https://images.unsplash.com/photo-1529692236671-f1f6cf9683ba?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
     };
-    this.createRestaurantMenu(vegetarianJourney);
-  }
-
-  // User operations
-  async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.username === username);
-  }
-
-  async createUser(user: InsertUser): Promise<User> {
-    const id = this.userId++;
-    const newUser: User = { ...user, id };
-    this.users.set(id, newUser);
-    return newUser;
-  }
-
-  // Room Types operations
-  async getRoomTypes(): Promise<RoomType[]> {
-    return Array.from(this.roomTypes.values());
-  }
-
-  async getRoomTypeById(id: number): Promise<RoomType | undefined> {
-    return this.roomTypes.get(id);
-  }
-
-  async createRoomType(roomType: InsertRoomType): Promise<RoomType> {
-    const id = this.roomTypeId++;
-    const newRoomType: RoomType = { ...roomType, id };
-    this.roomTypes.set(id, newRoomType);
-    return newRoomType;
-  }
-
-  // Room Bookings operations
-  async getRoomBookings(): Promise<RoomBooking[]> {
-    return Array.from(this.roomBookings.values());
-  }
-
-  async getRoomBookingById(id: number): Promise<RoomBooking | undefined> {
-    return this.roomBookings.get(id);
-  }
-
-  async createRoomBooking(booking: InsertRoomBooking): Promise<RoomBooking> {
-    const id = this.roomBookingId++;
-    const newBooking: RoomBooking = { ...booking, id, status: "confirmed" };
-    this.roomBookings.set(id, newBooking);
-    return newBooking;
-  }
-
-  async checkRoomAvailability(roomTypeId: number, checkInDate: Date, checkOutDate: Date): Promise<boolean> {
-    const bookings = Array.from(this.roomBookings.values()).filter(
-      booking => booking.roomTypeId === roomTypeId
-    );
-
-    const roomType = await this.getRoomTypeById(roomTypeId);
-    if (!roomType) return false;
-
-    // Check if any existing booking overlaps with the requested dates
-    const overlappingBookings = bookings.filter(booking => {
-      const bookingCheckIn = new Date(booking.checkInDate);
-      const bookingCheckOut = new Date(booking.checkOutDate);
-      
-      return (
-        (checkInDate >= bookingCheckIn && checkInDate < bookingCheckOut) || 
-        (checkOutDate > bookingCheckIn && checkOutDate <= bookingCheckOut) ||
-        (checkInDate <= bookingCheckIn && checkOutDate >= bookingCheckOut)
-      );
-    });
-
-    // For simplicity, we're assuming we have multiple rooms of each type
-    // In a real system, you would check against actual inventory
-    return overlappingBookings.length < 3; // Assume we have 3 rooms of each type
-  }
-
-  // Spa Services operations
-  async getSpaServices(): Promise<SpaService[]> {
-    return Array.from(this.spaServices.values());
-  }
-
-  async getSpaServiceById(id: number): Promise<SpaService | undefined> {
-    return this.spaServices.get(id);
-  }
-
-  async createSpaService(service: InsertSpaService): Promise<SpaService> {
-    const id = this.spaServiceId++;
-    const newService: SpaService = { ...service, id };
-    this.spaServices.set(id, newService);
-    return newService;
-  }
-
-  // Spa Bookings operations
-  async getSpaBookings(): Promise<SpaBooking[]> {
-    return Array.from(this.spaBookings.values());
-  }
-
-  async getSpaBookingById(id: number): Promise<SpaBooking | undefined> {
-    return this.spaBookings.get(id);
-  }
-
-  async createSpaBooking(booking: InsertSpaBooking): Promise<SpaBooking> {
-    const id = this.spaBookingId++;
-    const newBooking: SpaBooking = { ...booking, id, status: "confirmed" };
-    this.spaBookings.set(id, newBooking);
-    return newBooking;
-  }
-
-  async checkSpaAvailability(serviceId: number, date: Date, time: string): Promise<boolean> {
-    const bookings = Array.from(this.spaBookings.values()).filter(
-      booking => booking.serviceId === serviceId
-    );
-
-    // Convert the requested date to a string for comparison
-    const dateStr = date.toISOString().split('T')[0];
-
-    // Check if there are any bookings for the same service, date, and time
-    const overlappingBookings = bookings.filter(booking => {
-      const bookingDateStr = new Date(booking.date).toISOString().split('T')[0];
-      return bookingDateStr === dateStr && booking.time === time;
-    });
-
-    // For simplicity, assume we can handle 3 concurrent sessions for each service
-    return overlappingBookings.length < 3;
-  }
-
-  // Restaurant Menu operations
-  async getRestaurantMenus(): Promise<RestaurantMenu[]> {
-    return Array.from(this.restaurantMenus.values());
-  }
-
-  async getRestaurantMenuById(id: number): Promise<RestaurantMenu | undefined> {
-    return this.restaurantMenus.get(id);
-  }
-
-  async createRestaurantMenu(menu: InsertRestaurantMenu): Promise<RestaurantMenu> {
-    const id = this.restaurantMenuId++;
-    const newMenu: RestaurantMenu = { ...menu, id };
-    this.restaurantMenus.set(id, newMenu);
-    return newMenu;
-  }
-
-  // Restaurant Bookings operations
-  async getRestaurantBookings(): Promise<RestaurantBooking[]> {
-    return Array.from(this.restaurantBookings.values());
-  }
-
-  async getRestaurantBookingById(id: number): Promise<RestaurantBooking | undefined> {
-    return this.restaurantBookings.get(id);
-  }
-
-  async createRestaurantBooking(booking: InsertRestaurantBooking): Promise<RestaurantBooking> {
-    const id = this.restaurantBookingId++;
-    const newBooking: RestaurantBooking = { ...booking, id, status: "confirmed" };
-    this.restaurantBookings.set(id, newBooking);
-    return newBooking;
-  }
-
-  async checkRestaurantAvailability(date: Date, time: string, partySize: number, mealPeriod: string): Promise<boolean> {
-    const bookings = Array.from(this.restaurantBookings.values());
-
-    // Convert the requested date to a string for comparison
-    const dateStr = date.toISOString().split('T')[0];
-
-    // Check if there are any bookings for the same date, time, and meal period
-    const overlappingBookings = bookings.filter(booking => {
-      const bookingDateStr = new Date(booking.date).toISOString().split('T')[0];
-      return bookingDateStr === dateStr && booking.time === time && booking.mealPeriod === mealPeriod;
-    });
-
-    // Calculate total seats taken in this time slot
-    const totalSeats = overlappingBookings.reduce((sum, booking) => sum + booking.partySize, 0);
-
-    // Assume the restaurant can seat 50 people at once
-    return totalSeats + partySize <= 50;
+    await this.createRestaurantMenu(vegetarianJourney);
   }
 }
 
-export const storage = new MemStorage();
+// Create a storage instance and initialize it
+export const storage = new DatabaseStorage();
+// Initialize the database with sample data - but don't block the server startup
+(async () => {
+  try {
+    await (storage as DatabaseStorage).initializeData();
+    console.log("Database initialized with sample data");
+  } catch (error) {
+    console.error("Error initializing database:", error);
+  }
+})();
