@@ -8,6 +8,11 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
+import { 
+  sendRoomBookingConfirmation, 
+  sendSpaBookingConfirmation, 
+  sendRestaurantBookingConfirmation 
+} from "./email-service";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // API routes
@@ -58,8 +63,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const booking = await storage.createRoomBooking(roomBookingData);
+      
+      // Get room type details for email
+      const roomType = await storage.getRoomTypeById(roomBookingData.roomTypeId);
+      
+      if (roomType) {
+        // Send confirmation email
+        sendRoomBookingConfirmation(
+          roomBookingData.guestEmail,
+          roomBookingData.guestName,
+          roomType.name,
+          roomBookingData.checkInDate,
+          roomBookingData.checkOutDate,
+          roomBookingData.totalPrice
+        ).catch(err => console.error('Failed to send room booking confirmation email:', err));
+      }
+      
       res.status(201).json(booking);
     } catch (error) {
+      console.error('Room booking error:', error);
       res.status(500).json({ message: "Failed to create room booking" });
     }
   });
@@ -128,8 +150,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const booking = await storage.createSpaBooking(spaBookingData);
+      
+      // Get spa service details for email
+      const spaService = await storage.getSpaServiceById(spaBookingData.serviceId);
+      
+      if (spaService) {
+        // Send confirmation email
+        sendSpaBookingConfirmation(
+          spaBookingData.guestEmail,
+          spaBookingData.guestName,
+          spaService.name,
+          spaBookingData.date,
+          spaBookingData.time,
+          spaBookingData.totalPrice
+        ).catch(err => console.error('Failed to send spa booking confirmation email:', err));
+      }
+      
       res.status(201).json(booking);
     } catch (error) {
+      console.error('Spa booking error:', error);
       res.status(500).json({ message: "Failed to create spa booking" });
     }
   });
@@ -184,8 +223,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const booking = await storage.createRestaurantBooking(restaurantBookingData);
+      
+      // Send confirmation email
+      sendRestaurantBookingConfirmation(
+        restaurantBookingData.guestEmail,
+        restaurantBookingData.guestName,
+        restaurantBookingData.date,
+        restaurantBookingData.time,
+        restaurantBookingData.partySize,
+        restaurantBookingData.mealPeriod
+      ).catch(err => console.error('Failed to send restaurant booking confirmation email:', err));
+      
       res.status(201).json(booking);
     } catch (error) {
+      console.error('Restaurant booking error:', error);
       res.status(500).json({ message: "Failed to create restaurant booking" });
     }
   });
