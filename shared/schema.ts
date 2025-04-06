@@ -58,17 +58,18 @@ export const roomBookings = pgTable("room_bookings", {
   status: text("status").default("confirmed"),
 });
 
-export const insertRoomBookingSchema = createInsertSchema(roomBookings).pick({
-  roomTypeId: true,
-  guestName: true,
-  guestEmail: true,
-  guestPhone: true,
-  checkInDate: true,
-  checkOutDate: true,
-  adults: true,
-  children: true,
-  specialRequests: true,
-  totalPrice: true,
+// Custom Room Booking Schema with string date handling
+export const insertRoomBookingSchema = z.object({
+  roomTypeId: z.number().int().positive(),
+  guestName: z.string().min(2),
+  guestEmail: z.string().email(),
+  guestPhone: z.string().optional(),
+  checkInDate: z.string(), // Accept ISO string
+  checkOutDate: z.string(), // Accept ISO string
+  adults: z.number().int().positive(),
+  children: z.number().int().nonnegative().default(0),
+  specialRequests: z.string().optional(),
+  totalPrice: z.number().int().positive(),
 });
 
 // Spa Services schema
@@ -104,16 +105,17 @@ export const spaBookings = pgTable("spa_bookings", {
   status: text("status").default("confirmed"),
 });
 
-export const insertSpaBookingSchema = createInsertSchema(spaBookings).pick({
-  serviceId: true,
-  guestName: true,
-  guestEmail: true,
-  guestPhone: true,
-  date: true,
-  time: true,
-  participants: true,
-  specialRequests: true,
-  totalPrice: true,
+// Custom Spa Booking Schema with string date handling
+export const insertSpaBookingSchema = z.object({
+  serviceId: z.number().int().positive(),
+  guestName: z.string().min(2),
+  guestEmail: z.string().email(),
+  guestPhone: z.string().optional(),
+  date: z.string(), // Accept ISO string
+  time: z.string(),
+  participants: z.number().int().positive(),
+  specialRequests: z.string().optional(),
+  totalPrice: z.number().int().positive(),
 });
 
 // Restaurant Menu Items schema
@@ -146,15 +148,16 @@ export const restaurantBookings = pgTable("restaurant_bookings", {
   status: text("status").default("confirmed"),
 });
 
-export const insertRestaurantBookingSchema = createInsertSchema(restaurantBookings).pick({
-  guestName: true,
-  guestEmail: true,
-  guestPhone: true,
-  date: true,
-  time: true,
-  partySize: true,
-  mealPeriod: true,
-  specialRequests: true,
+// Custom Restaurant Booking Schema with string date handling
+export const insertRestaurantBookingSchema = z.object({
+  guestName: z.string().min(2),
+  guestEmail: z.string().email(),
+  guestPhone: z.string().optional(),
+  date: z.string(), // Accept ISO string
+  time: z.string(),
+  partySize: z.number().int().positive(),
+  mealPeriod: z.string(),
+  specialRequests: z.string().optional(),
 });
 
 // Types
