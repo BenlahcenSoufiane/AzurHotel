@@ -3,7 +3,7 @@ import pg from "pg";
 import * as schema from "@shared/schema";
 
 // Create a PostgreSQL pool
-const pool = new pg.Pool({
+export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
 });
 

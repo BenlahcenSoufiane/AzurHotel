@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { 
@@ -13,8 +13,90 @@ import {
   sendSpaBookingConfirmation, 
   sendRestaurantBookingConfirmation 
 } from "./email-service";
+import { setupAuth } from "./auth";
+
+// Auth middleware for protected routes
+const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  res.status(401).json({ message: "Authentication required" });
+};
+
+// Admin role middleware
+const isAdmin = (req: Request, res: Response, next: NextFunction) => {
+  if (req.isAuthenticated() && req.user?.role === "admin") {
+    return next();
+  }
+  res.status(403).json({ message: "Admin access required" });
+};
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Setup authentication
+  setupAuth(app);
+  
+  // API Routes - User Bookings
+  app.get('/api/my/room-bookings', isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const roomBookings = await storage.getUserRoomBookings(req.user.id);
+      res.json(roomBookings);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch room bookings" });
+    }
+  });
+  
+  app.get('/api/my/spa-bookings', isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const spaBookings = await storage.getUserSpaBookings(req.user.id);
+      res.json(spaBookings);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch spa bookings" });
+    }
+  });
+  
+  app.get('/api/my/restaurant-bookings', isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const restaurantBookings = await storage.getUserRestaurantBookings(req.user.id);
+      res.json(restaurantBookings);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch restaurant bookings" });
+    }
+  });
+  
+  // Admin Routes
+  app.get('/api/admin/users', isAdmin, async (req: Request, res: Response) => {
+    try {
+      const users = await storage.getAllUsers();
+      res.json(users);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+  
+  app.get('/api/admin/bookings', isAdmin, async (req: Request, res: Response) => {
+    try {
+      const roomBookings = await storage.getRoomBookings();
+      const spaBookings = await storage.getSpaBookings();
+      const restaurantBookings = await storage.getRestaurantBookings();
+      
+      res.json({
+        roomBookings,
+        spaBookings,
+        restaurantBookings
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch bookings" });
+    }
+  });
   // API routes
   app.get('/api/room-types', async (req: Request, res: Response) => {
     try {
@@ -60,6 +142,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!isAvailable) {
         return res.status(409).json({ message: "Room not available for the selected dates" });
+      }
+      
+      // If user is authenticated, associate booking with their account
+      if (req.isAuthenticated() && req.user) {
+        roomBookingData.userId = req.user.id;
       }
       
       const booking = await storage.createRoomBooking(roomBookingData);
@@ -149,6 +236,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(409).json({ message: "Spa service not available for the selected date and time" });
       }
       
+      // If user is authenticated, associate booking with their account
+      if (req.isAuthenticated() && req.user) {
+        spaBookingData.userId = req.user.id;
+      }
+      
       const booking = await storage.createSpaBooking(spaBookingData);
       
       // Get spa service details for email
@@ -220,6 +312,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!isAvailable) {
         return res.status(409).json({ message: "Restaurant not available for the selected date, time, and party size" });
+      }
+      
+      // If user is authenticated, associate booking with their account
+      if (req.isAuthenticated() && req.user) {
+        restaurantBookingData.userId = req.user.id;
       }
       
       const booking = await storage.createRestaurantBooking(restaurantBookingData);

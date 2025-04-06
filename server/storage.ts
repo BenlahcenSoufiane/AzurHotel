@@ -9,13 +9,25 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, between, sql } from "drizzle-orm";
+import session from "express-session";
+import connectPg from "connect-pg-simple";
+import { pool } from "./db";
 
 // Interface for storage operations
 export interface IStorage {
+  // Session store
+  sessionStore: session.Store;
+  
   // User operations
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  getAllUsers(): Promise<User[]>;
+  
+  // User Bookings operations
+  getUserRoomBookings(userId: number): Promise<RoomBooking[]>;
+  getUserSpaBookings(userId: number): Promise<SpaBooking[]>;
+  getUserRestaurantBookings(userId: number): Promise<RestaurantBooking[]>;
 
   // Room Types operations
   getRoomTypes(): Promise<RoomType[]>;
@@ -52,6 +64,17 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // Session store
+  sessionStore: session.Store;
+  
+  constructor() {
+    const PostgresStore = connectPg(session);
+    this.sessionStore = new PostgresStore({
+      pool,
+      createTableIfMissing: true
+    });
+  }
+
   // User operations
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -66,6 +89,31 @@ export class DatabaseStorage implements IStorage {
   async createUser(user: InsertUser): Promise<User> {
     const [createdUser] = await db.insert(users).values(user).returning();
     return createdUser;
+  }
+  
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users);
+  }
+  
+  async getUserRoomBookings(userId: number): Promise<RoomBooking[]> {
+    return await db.select()
+      .from(roomBookings)
+      .where(eq(roomBookings.userId, userId))
+      .orderBy(sql`${roomBookings.checkInDate} DESC`);
+  }
+  
+  async getUserSpaBookings(userId: number): Promise<SpaBooking[]> {
+    return await db.select()
+      .from(spaBookings)
+      .where(eq(spaBookings.userId, userId))
+      .orderBy(sql`${spaBookings.date} DESC`);
+  }
+  
+  async getUserRestaurantBookings(userId: number): Promise<RestaurantBooking[]> {
+    return await db.select()
+      .from(restaurantBookings)
+      .where(eq(restaurantBookings.userId, userId))
+      .orderBy(sql`${restaurantBookings.date} DESC`);
   }
 
   // Room Types operations
