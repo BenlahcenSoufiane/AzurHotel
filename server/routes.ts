@@ -4,7 +4,9 @@ import { storage } from "./storage";
 import { 
   insertRoomBookingSchema,
   insertSpaBookingSchema,
-  insertRestaurantBookingSchema
+  insertRestaurantBookingSchema,
+  updateBookingStatusSchema,
+  BookingStatus
 } from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
@@ -88,12 +90,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const spaBookings = await storage.getSpaBookings();
       const restaurantBookings = await storage.getRestaurantBookings();
       
-      res.json({
-        roomBookings,
-        spaBookings,
-        restaurantBookings
-      });
+      // Get necessary related data
+      const users = await storage.getAllUsers();
+      const roomTypeList = await storage.getRoomTypes();
+      const serviceList = await storage.getSpaServices();
+      
+      // Transform bookings into a unified format for the admin dashboard
+      const allBookings = [
+        ...roomBookings.map(booking => {
+          const roomType = roomTypeList.find(rt => rt.id === booking.roomTypeId);
+          const user = booking.userId ? users.find(u => u.id === booking.userId) : null;
+          
+          return {
+            id: booking.id,
+            userId: booking.userId,
+            bookingType: 'room',
+            createdAt: booking.createdAt?.toISOString(),
+            status: booking.status,
+            userFullName: user?.fullName || booking.guestName,
+            userEmail: user?.email || booking.guestEmail,
+            userPhone: user?.phone || booking.guestPhone || '',
+            roomTypeName: roomType?.name || 'Unknown Room',
+            checkInDate: booking.checkInDate.toISOString(),
+            checkOutDate: booking.checkOutDate.toISOString(),
+            adults: booking.adults,
+            children: booking.children,
+            totalPrice: booking.totalPrice
+          };
+        }),
+        ...spaBookings.map(booking => {
+          const service = serviceList.find(s => s.id === booking.serviceId);
+          const user = booking.userId ? users.find(u => u.id === booking.userId) : null;
+          
+          return {
+            id: booking.id,
+            userId: booking.userId,
+            bookingType: 'spa',
+            createdAt: booking.createdAt?.toISOString(),
+            status: booking.status,
+            userFullName: user?.fullName || booking.guestName,
+            userEmail: user?.email || booking.guestEmail,
+            userPhone: user?.phone || booking.guestPhone || '',
+            serviceName: service?.name || 'Unknown Service',
+            appointmentDate: booking.date.toISOString(),
+            appointmentTime: booking.time,
+            price: booking.totalPrice
+          };
+        }),
+        ...restaurantBookings.map(booking => {
+          const user = booking.userId ? users.find(u => u.id === booking.userId) : null;
+          
+          return {
+            id: booking.id,
+            userId: booking.userId,
+            bookingType: 'restaurant',
+            createdAt: booking.createdAt?.toISOString(),
+            status: booking.status,
+            userFullName: user?.fullName || booking.guestName,
+            userEmail: user?.email || booking.guestEmail,
+            userPhone: user?.phone || booking.guestPhone || '',
+            reservationDate: booking.date.toISOString(),
+            reservationTime: booking.time,
+            partySize: booking.partySize,
+            mealPeriod: booking.mealPeriod
+          };
+        })
+      ];
+      
+      res.json(allBookings);
     } catch (error) {
+      console.error('Error getting all bookings:', error);
       res.status(500).json({ message: "Failed to fetch bookings" });
     }
   });
@@ -353,6 +419,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ available: isAvailable });
     } catch (error) {
       res.status(500).json({ message: "Failed to check restaurant availability" });
+    }
+  });
+  
+  // Admin booking status update endpoints
+  app.patch('/api/admin/room-bookings/:id/status', isAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { status } = updateBookingStatusSchema.parse(req.body);
+      
+      const updatedBooking = await storage.updateRoomBookingStatus(parseInt(id), status);
+      if (!updatedBooking) {
+        return res.status(404).json({ message: 'Booking not found' });
+      }
+      
+      res.json(updatedBooking);
+    } catch (error) {
+      console.error('Error updating room booking status:', error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: 'Invalid status value', errors: error.errors });
+      }
+      res.status(500).json({ message: 'Error updating booking status' });
+    }
+  });
+
+  app.patch('/api/admin/spa-bookings/:id/status', isAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { status } = updateBookingStatusSchema.parse(req.body);
+      
+      const updatedBooking = await storage.updateSpaBookingStatus(parseInt(id), status);
+      if (!updatedBooking) {
+        return res.status(404).json({ message: 'Booking not found' });
+      }
+      
+      res.json(updatedBooking);
+    } catch (error) {
+      console.error('Error updating spa booking status:', error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: 'Invalid status value', errors: error.errors });
+      }
+      res.status(500).json({ message: 'Error updating booking status' });
+    }
+  });
+
+  app.patch('/api/admin/restaurant-bookings/:id/status', isAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { status } = updateBookingStatusSchema.parse(req.body);
+      
+      const updatedBooking = await storage.updateRestaurantBookingStatus(parseInt(id), status);
+      if (!updatedBooking) {
+        return res.status(404).json({ message: 'Booking not found' });
+      }
+      
+      res.json(updatedBooking);
+    } catch (error) {
+      console.error('Error updating restaurant booking status:', error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: 'Invalid status value', errors: error.errors });
+      }
+      res.status(500).json({ message: 'Error updating booking status' });
     }
   });
 

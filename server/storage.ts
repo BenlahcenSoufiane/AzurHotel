@@ -38,6 +38,7 @@ export interface IStorage {
   getRoomBookings(): Promise<RoomBooking[]>;
   getRoomBookingById(id: number): Promise<RoomBooking | undefined>;
   createRoomBooking(booking: InsertRoomBooking): Promise<RoomBooking>;
+  updateRoomBookingStatus(bookingId: number, status: string): Promise<RoomBooking | undefined>;
   checkRoomAvailability(roomTypeId: number, checkInDate: Date, checkOutDate: Date): Promise<boolean>;
 
   // Spa Services operations
@@ -49,6 +50,7 @@ export interface IStorage {
   getSpaBookings(): Promise<SpaBooking[]>;
   getSpaBookingById(id: number): Promise<SpaBooking | undefined>;
   createSpaBooking(booking: InsertSpaBooking): Promise<SpaBooking>;
+  updateSpaBookingStatus(bookingId: number, status: string): Promise<SpaBooking | undefined>;
   checkSpaAvailability(serviceId: number, date: Date, time: string): Promise<boolean>;
 
   // Restaurant Menu operations
@@ -60,6 +62,7 @@ export interface IStorage {
   getRestaurantBookings(): Promise<RestaurantBooking[]>;
   getRestaurantBookingById(id: number): Promise<RestaurantBooking | undefined>;
   createRestaurantBooking(booking: InsertRestaurantBooking): Promise<RestaurantBooking>;
+  updateRestaurantBookingStatus(bookingId: number, status: string): Promise<RestaurantBooking | undefined>;
   checkRestaurantAvailability(date: Date, time: string, partySize: number, mealPeriod: string): Promise<boolean>;
 }
 
@@ -153,6 +156,16 @@ export class DatabaseStorage implements IStorage {
     const [createdBooking] = await db.insert(roomBookings).values(bookingWithDates).returning();
     return createdBooking;
   }
+  
+  async updateRoomBookingStatus(bookingId: number, status: string): Promise<RoomBooking | undefined> {
+    const [updatedBooking] = await db
+      .update(roomBookings)
+      .set({ status })
+      .where(eq(roomBookings.id, bookingId))
+      .returning();
+    
+    return updatedBooking;
+  }
 
   async checkRoomAvailability(roomTypeId: number, checkInDate: Date, checkOutDate: Date): Promise<boolean> {
     // Get the room type to verify it exists
@@ -224,6 +237,16 @@ export class DatabaseStorage implements IStorage {
     const [createdBooking] = await db.insert(spaBookings).values(bookingWithDate).returning();
     return createdBooking;
   }
+  
+  async updateSpaBookingStatus(bookingId: number, status: string): Promise<SpaBooking | undefined> {
+    const [updatedBooking] = await db
+      .update(spaBookings)
+      .set({ status })
+      .where(eq(spaBookings.id, bookingId))
+      .returning();
+    
+    return updatedBooking;
+  }
 
   async checkSpaAvailability(serviceId: number, date: Date, time: string): Promise<boolean> {
     // Get the service to verify it exists
@@ -279,6 +302,16 @@ export class DatabaseStorage implements IStorage {
     
     const [createdBooking] = await db.insert(restaurantBookings).values(bookingWithDate).returning();
     return createdBooking;
+  }
+  
+  async updateRestaurantBookingStatus(bookingId: number, status: string): Promise<RestaurantBooking | undefined> {
+    const [updatedBooking] = await db
+      .update(restaurantBookings)
+      .set({ status })
+      .where(eq(restaurantBookings.id, bookingId))
+      .returning();
+    
+    return updatedBooking;
   }
 
   async checkRestaurantAvailability(date: Date, time: string, partySize: number, mealPeriod: string): Promise<boolean> {

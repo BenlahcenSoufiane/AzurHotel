@@ -199,6 +199,27 @@ export type InsertRoomType = z.infer<typeof insertRoomTypeSchema>;
 export type RoomBooking = typeof roomBookings.$inferSelect;
 export type InsertRoomBooking = z.infer<typeof insertRoomBookingSchema>;
 
+// Booking status enum and schema for status updates
+export const BookingStatus = {
+  PENDING: "pending",
+  CONFIRMED: "confirmed",
+  CHECKED_IN: "checked-in",
+  COMPLETED: "completed",
+  CANCELLED: "cancelled",
+} as const;
+
+export type BookingStatusType = typeof BookingStatus[keyof typeof BookingStatus];
+
+export const updateBookingStatusSchema = z.object({
+  status: z.enum([
+    BookingStatus.PENDING,
+    BookingStatus.CONFIRMED,
+    BookingStatus.CHECKED_IN, 
+    BookingStatus.COMPLETED,
+    BookingStatus.CANCELLED
+  ]),
+});
+
 export type SpaService = typeof spaServices.$inferSelect;
 export type InsertSpaService = z.infer<typeof insertSpaServiceSchema>;
 
